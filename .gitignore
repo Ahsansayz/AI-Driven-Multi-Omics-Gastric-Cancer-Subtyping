@@ -1,0 +1,56 @@
+# ===========================
+# Data files (too large for GitHub)
+# ===========================
+01_raw_data/maf_files/*.maf
+01_raw_data/MANIFEST.txt
+02_methylation_data/gdc_manifest*.txt
+02_methylation_data/uuid_barcode_map.json
+
+# ===========================
+# Output / Intermediate (reproducible)
+# ===========================
+output/
+04_intermediate_data/mutation_matrix.csv
+04_intermediate_data/sbs96_matrix.csv
+04_intermediate_data/signature_activity.csv
+04_intermediate_data/signatures.csv
+04_intermediate_data/clustered_samples.csv
+04_intermediate_data/cosmic_assignment/
+04_intermediate_data/signature_results/
+04_intermediate_data/signatures/
+05_feature_matrices/ml_features.csv
+05_feature_matrices/ml_features_multiomics.csv
+05_feature_matrices/ml_features_multiomics_v2.csv
+05_feature_matrices/ml_labels.csv
+05_feature_matrices/gene_mutation_features.csv
+06_ml_results/
+data/
+evaluate/
+
+# ===========================
+# Symlinks created by pipeline
+# ===========================
+maf_files
+cosmic
+
+# ===========================
+# System / IDE / Python
+# ===========================
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
+.vscode/
+.idea/
+*.egg-info/
+dist/
+build/
+*.pkl
+*.pickle
+.code-review-graph/
+
+# ===========================
+# Jupyter
+# ===========================
+.ipynb_checkpoints/
+*.ipynb

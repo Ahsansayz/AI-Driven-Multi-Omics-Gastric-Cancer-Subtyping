@@ -1,0 +1,831 @@
+================================================================================
+    COMPLETE STEP-BY-STEP DOCUMENTATION
+    AI-Driven Mutational Signature Analysis & Classification of Gastric Cancer
+    Using Next-Generation Sequencing Data
+================================================================================
+    
+    Project Location: /home/param/Downloads/Project/
+    Date Started:     April 13, 2026
+    Date Completed:   April 16, 2026
+    System:           Ubuntu Linux, Python 3.13, Miniconda3
+
+================================================================================
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                    PHASE 0: PROJECT SETUP & DATA DOWNLOAD
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+0.1  DATA SOURCE
+─────────────────
+    - Source:  TCGA-STAD (Stomach Adenocarcinoma) — GDC Data Portal
+    - URL:     https://portal.gdc.cancer.gov
+    - Files:   434 Masked Somatic Mutation MAF files (WXS)
+    - Genome:  GRCh38/hg38
+
+
+0.2  PROJECT DIRECTORY STRUCTURE
+────────────────────────────────
+    Command:
+    ┌─────────────────────────────────────────────────────────────────────────┐
+    │ mkdir -p /home/param/Downloads/Project                                 │
+    │ mkdir -p /home/param/Downloads/Project/maf_files                       │
+    │ mkdir -p /home/param/Downloads/Project/output/{signatures,             │
+    │          cosmic_assignment,ml_results,figures}                          │
+    │ mkdir -p /home/param/Downloads/Project/data                            │
+    └─────────────────────────────────────────────────────────────────────────┘
+
+    Final Structure:
+    /home/param/Downloads/Project/
+    ├── maf_files/                 # 434 MAF files (downloaded from GDC)
+    ├── data/                      # Clinical data
+    ├── output/                    # All pipeline outputs
+    │   ├── signatures/            # De novo signature extraction
+    │   ├── cosmic_assignment/     # COSMIC v3.4 mapping
+    │   ├── ml_results/            # ML models & metrics
+    │   └── figures/               # Publication figures
+    ├── step1_build_sbs96_matrix.py
+    ├── step2_extract_signatures.py
+    ├── step3_cosmic_assignment.py
+    ├── step4_get_clinical_data.py
+    ├── step5_feature_engineering.py
+    ├── step6_ml_classification.py
+    ├── step7_visualize.py
+    ├── step8_generate_report.py
+    ├── run_pipeline.sh
+    ├── generate_paper.py
+    └── documentation/
+
+
+0.3  MAF FILES DOWNLOAD (from GDC Data Portal)
+───────────────────────────────────────────────
+    The MAF files were downloaded manually from:
+    https://portal.gdc.cancer.gov/repository
+
+    Filters applied:
+    - Project:     TCGA-STAD
+    - Data Type:   Masked Somatic Mutation
+    - Data Format: MAF
+    - Workflow:    Aliquot Ensemble Somatic Variant Merging and Masking
+
+    Total files downloaded: 434
+    Each file named: <uuid>.wxs.aliquot_ensemble_masked.maf
+
+    Verification command:
+    ┌─────────────────────────────────────────────────────────────────────────┐
+    │ ls maf_files/*.maf | wc -l                                             │
+    └─────────────────────────────────────────────────────────────────────────┘
+    Output: 434
+
+
+0.4  INSTALL DEPENDENCIES
+─────────────────────────
+    Command:
+    ┌─────────────────────────────────────────────────────────────────────────┐
+    │ source /home/param/miniconda3/etc/profile.d/conda.sh                   │
+    │ conda activate base                                                     │
+    │                                                                         │
+    │ pip install pandas numpy scikit-learn xgboost matplotlib seaborn \      │
+    │   tqdm shap imbalanced-learn lifelines umap-learn                      │
+    │                                                                         │
+    │ pip install SigProfilerAssignment                                       │
+    │                                                                         │
+    │ pip install python-docx                                                 │
+    └─────────────────────────────────────────────────────────────────────────┘
+
+    Packages installed:
+    ┌──────────────────────────┬──────────┬──────────────────────────────────┐
+    │ Package                  │ Version  │ Purpose                          │
+    ├──────────────────────────┼──────────┼──────────────────────────────────┤
+    │ pandas                   │ 2.3.3    │ Data manipulation                │
+    │ numpy                    │ 2.4.4    │ Numerical computing              │
+    │ scikit-learn             │ 1.8.0    │ NMF, ML classifiers, metrics     │
+    │ xgboost                  │ 3.2.0    │ XGBoost classifier               │
+    │ matplotlib               │ 3.10.8   │ Plotting                         │
+    │ seaborn                  │ 0.13.2   │ Statistical visualization        │
+    │ tqdm                     │ 4.67.1   │ Progress bars                    │
+    │ shap                     │ 0.51.0   │ Model explainability (SHAP)      │
+    │ imbalanced-learn         │ 0.14.1   │ Class imbalance handling         │
+    │ lifelines                │ 0.30.3   │ Survival analysis                │
+    │ umap-learn               │ 0.5.12   │ UMAP dimensionality reduction    │
+    │ SigProfilerAssignment    │ 1.1.3    │ COSMIC v3.4 reference signatures │
+    │ SigProfilerMatrixGen     │ 1.3.6    │ (dependency)                     │
+    │ SigProfilerPlotting      │ 1.4.3    │ (dependency)                     │
+    │ scipy                    │ 1.17.1   │ NNLS fitting                     │
+    │ python-docx              │ 1.2.0    │ DOCX report generation           │
+    └──────────────────────────┴──────────┴──────────────────────────────────┘
+
+
+0.5  MAF FILE STRUCTURE INSPECTION  
+───────────────────────────────────
+    Command (inspect columns of a MAF file):
+    ┌─────────────────────────────────────────────────────────────────────────┐
+    │ head -10 maf_files/$(ls maf_files/ | head -1) | grep -v "^#" |        │
+    │   head -1 | tr '\t' '\n' | cat -n                                      │
+    └─────────────────────────────────────────────────────────────────────────┘
+
+    Output (140 columns total, key ones shown):
+        1   Hugo_Symbol
+        5   Chromosome
+        6   Start_Position
+        7   End_Position
+       10   Variant_Type
+       11   Reference_Allele
+       13   Tumor_Seq_Allele2
+       16   Tumor_Sample_Barcode      ← TCGA barcode (e.g., TCGA-CD-A4MJ-01A)
+      129   CONTEXT                   ← 11-char trinucleotide context string
+
+    CONTEXT column sample values:
+        GTAAAACCGTC      (center base = 'A' at position 5)
+        GATTGCGTCCG      (center base = 'G' at position 5)
+        TGCGTCCGAGC      (center base = 'C' at position 5)
+
+    This CONTEXT column is CRITICAL — it provides the trinucleotide context
+    needed for proper 96-channel SBS matrix construction.
+
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        STEP 1: BUILD 96-CHANNEL SBS TRINUCLEOTIDE MUTATION MATRIX
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+PURPOSE:
+    Convert raw MAF files into the standard 96-channel Single Base Substitution
+    (SBS) trinucleotide context matrix — the foundation for ALL downstream
+    mutational signature analysis.
+
+    96 channels = 6 substitution types × 16 trinucleotide contexts
+    Substitutions (pyrimidine convention): C>A, C>G, C>T, T>A, T>C, T>G
+    Trinucleotide: 4 possible 5' bases × 4 possible 3' bases = 16
+    Total: 6 × 16 = 96
+
+SCRIPT: step1_build_sbs96_matrix.py (227 lines)
+─────────────────────────────────────────────────
+
+    Key Logic:
+    1. For each MAF file:
+       a. Read columns: Variant_Type, Reference_Allele, Tumor_Seq_Allele2, CONTEXT
+       b. Filter to SNPs only (skip INDELs, DNPs, etc.)
+       c. For each SNP:
+          - Extract the center base from CONTEXT (position len/2)
+          - Get 5' base (position mid-1) and 3' base (position mid+1)
+          - Apply pyrimidine convention: if ref is purine (A/G),
+            complement ref, alt, and swap 5'/3' flanking bases
+          - Create label: e.g., "A[C>T]G"
+       d. Count occurrences of each of 96 channels
+
+    2. Build DataFrame: 431 samples × 96 columns
+    3. Save as CSV
+
+    Run Command:
+    ┌─────────────────────────────────────────────────────────────────────────┐
+    │ source /home/param/miniconda3/etc/profile.d/conda.sh                   │
+    │ conda activate base                                                     │
+    │ python step1_build_sbs96_matrix.py                                      │
+    └─────────────────────────────────────────────────────────────────────────┘
+
+    Output:
+    ┌─────────────────────────────────────────────────────────────────────────┐
+    │ ============================================================           │
+    │ Step 1: Building 96-Channel SBS Trinucleotide Matrix                   │
+    │ ============================================================           │
+    │                                                                         │
+    │ 📁 Found 434 MAF files in maf_files/                                   │
+    │ Processing MAF files: 100%|████████████| 434/434 [00:45<00:00]         │
+    │                                                                         │
+    │ ✅ Processed 434 samples, skipped 0                                    │
+    │                                                                         │
+    │ 📊 SBS96 Matrix Summary                                                │
+    │   Samples:          431                                                 │
+    │   Mutation types:   96 (should be 96)                                   │
+    │   Total mutations:  154,534                                             │
+    │   Median per sample: 123                                                │
+    │   Min per sample:   1                                                   │
+    │   Max per sample:   7,619                                               │
+    │                                                                         │
+    │   Top 5 mutation types:                                                 │
+    │     G[C>T]G: 20,420                                                     │
+    │     A[C>T]G: 13,719                                                     │
+    │     C[C>T]G: 13,311                                                     │
+    │     T[C>T]G: 9,095                                                      │
+    │     G[C>T]C: 6,660                                                      │
+    │                                                                         │
+    │ 💾 Saved to: output/sbs96_matrix.csv                                   │
+    │ ✅ Step 1 complete!                                                     │
+    └─────────────────────────────────────────────────────────────────────────┘
+
+    OUTPUT FILE: output/sbs96_matrix.csv (96.7 KB)
+    FORMAT: CSV, rows=sample barcodes, columns=96 SBS channels
+    VERIFICATION: Top channel G[C>T]G is CpG>TpG transition (SBS1 aging) ✓
+
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+           STEP 2: DE NOVO MUTATIONAL SIGNATURE EXTRACTION (NMF)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+PURPOSE:
+    Extract de novo mutational signatures from the SBS96 matrix using
+    Non-negative Matrix Factorization (NMF). Determine the optimal number
+    of signatures through stability analysis.
+
+    Mathematical model: V ≈ W × H
+    Where: V = mutation matrix (431×96)
+           W = signature activities (431×k) — how much each sig in each sample
+           H = signature profiles (k×96) — what each signature looks like
+           k = number of signatures (to be determined)
+
+SCRIPT: step2_extract_signatures.py (377 lines)
+────────────────────────────────────────────────
+
+    Key Logic:
+    1. Try SigProfilerExtractor first (gold standard) — NOT installed
+    2. Fall back to custom NMF:
+       a. Test ranks k = 2 to 12
+       b. For each rank: run 50 NMF replicates with different random seeds
+       c. Compute for each rank:
+          - Mean Frobenius reconstruction error: ||V - W×H||_F / ||V||_F
+          - Stability: avg cosine similarity between matched signatures
+            across replicate runs (using greedy Hungarian matching)
+       d. Select optimal rank: highest k with stability > 0.80 and
+          meaningful error reduction (> 0.005 per additional signature)
+
+    Run Command:
+    ┌─────────────────────────────────────────────────────────────────────────┐
+    │ python step2_extract_signatures.py                                      │
+    └─────────────────────────────────────────────────────────────────────────┘
+
+    Output:
+    ┌─────────────────────────────────────────────────────────────────────────┐
+    │ 🔬 Running custom NMF signature extraction...                          │
+    │    Testing ranks 2 to 12, 50 runs each                                 │
+    │                                                                         │
+    │   Rank 2:  error=0.3284 ± 0.0000, stability=1.0000                     │
+    │   Rank 3:  error=0.2586 ± 0.0000, stability=1.0000                     │
+    │   Rank 4:  error=0.1960 ± 0.0000, stability=1.0000                     │
+    │   Rank 5:  error=0.1542 ± 0.0000, stability=1.0000                     │
+    │   Rank 6:  error=0.1107 ± 0.0000, stability=1.0000                     │
+    │   Rank 7:  error=0.0950 ± 0.0000, stability=1.0000                     │
+    │   Rank 8:  error=0.0864 ± 0.0000, stability=1.0000                     │
+    │   Rank 9:  error=0.0793 ± 0.0000, stability=1.0000                     │
+    │   Rank 10: error=0.0744 ± 0.0000, stability=1.0000                     │
+    │   Rank 11: error=0.0702 ± 0.0000, stability=1.0000                     │
+    │   Rank 12: error=0.0671 ± 0.0000, stability=1.0000                     │
+    │                                                                         │
+    │ 🏆 Optimal number of signatures: 9                                     │
+    │                                                                         │
+    │ 📊 Saved: output/signatures/rank_selection.png                         │
+    │ 📊 Saved: output/signatures/signature_profiles_96ch.png                │
+    │ 📊 Saved: output/signatures/signature_activities_heatmap.png           │
+    │ ✅ Step 2 complete!                                                     │
+    └─────────────────────────────────────────────────────────────────────────┘
+
+    OUTPUT FILES:
+      output/signatures/signature_profiles.csv        (15 KB) — 9 sigs × 96 channels
+      output/signatures/signature_activities.csv       (70 KB) — 431 samples × 9 sigs
+      output/signatures/rank_selection_metrics.csv     (0.7 KB)
+      output/signatures/rank_selection.png             (221 KB)
+      output/signatures/signature_profiles_96ch.png    (527 KB) 
+      output/signatures/signature_activities_heatmap.png (147 KB)
+
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+              STEP 3: COSMIC v3.4 SIGNATURE ASSIGNMENT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+PURPOSE:
+    Map each sample's mutation profile to known COSMIC v3.4 reference
+    signatures using Non-Negative Least Squares (NNLS) fitting.
+    This tells us WHICH known mutagenic processes are active in each tumor.
+
+PRE-REQUISITE:
+    The COSMIC v3.4 reference file was obtained from SigProfilerAssignment:
+    ┌─────────────────────────────────────────────────────────────────────────┐
+    │ # COSMIC reference is bundled inside the SigProfilerAssignment package │
+    │ # Location after installation:                                          │
+    │ /home/param/miniconda3/lib/python3.13/site-packages/                   │
+    │   SigProfilerAssignment/data/Reference_Signatures/GRCh38/              │
+    │   COSMIC_v3.4_SBS_GRCh38.txt                                           │
+    │                                                                         │
+    │ # We copied it to our project:                                          │
+    │ cp /home/param/miniconda3/lib/python3.13/site-packages/\               │
+    │   SigProfilerAssignment/data/Reference_Signatures/GRCh38/\             │
+    │   COSMIC_v3.4_SBS_GRCh38.txt \                                         │
+    │   output/cosmic_assignment/COSMIC_v3.4_SBS_GRCh38.txt                  │
+    └─────────────────────────────────────────────────────────────────────────┘
+
+    COSMIC reference: 96 channels × 86 SBS signatures
+    Signatures: SBS1, SBS2, SBS3, SBS4, SBS5, SBS6, ..., SBS99
+
+SCRIPT: step3_cosmic_assignment.py (319 lines)
+──────────────────────────────────────────────
+
+    Key Logic:
+    1. Load our SBS96 matrix (431 × 96)
+    2. Load COSMIC v3.4 reference (96 × 86)
+    3. For each sample:
+       a. Solve: min ||sample - COSMIC × weights||²  subject to weights ≥ 0
+       b. This is NNLS (Non-Negative Least Squares) from scipy.optimize.nnls
+       c. The weights tell us how many mutations each COSMIC signature
+          contributed to this sample
+    4. Compute cosine similarity between original and reconstruction
+    5. Save activities, cosine similarities, top signatures per sample
+
+    Run Command:
+    ┌─────────────────────────────────────────────────────────────────────────┐
+    │ python step3_cosmic_assignment.py                                       │
+    └─────────────────────────────────────────────────────────────────────────┘
+
+    Output:
+    ┌─────────────────────────────────────────────────────────────────────────┐
+    │ 🔬 Running manual COSMIC v3.4 signature fitting...                     │
+    │   Loaded matrix: 431 samples × 96 channels                             │
+    │   Using cached COSMIC reference                                         │
+    │   Matching channels: 96/96                                              │
+    │   COSMIC signatures: 86                                                 │
+    │   Fitting COSMIC signatures: 100%|██████| 431/431 [00:00<00:00]        │
+    │                                                                         │
+    │ 📊 COSMIC Assignment Summary                                           │
+    │   Samples fitted: 431                                                   │
+    │   Active COSMIC signatures: 83                                          │
+    │   Mean cosine similarity: 0.933                                         │
+    │   Samples with cos_sim > 0.90: 348 (80.7%)                             │
+    │ ✅ Step 3 complete!                                                     │
+    └─────────────────────────────────────────────────────────────────────────┘
+
+    Top 10 COSMIC signatures by mean activity:
+        SBS15  (DNA mismatch repair deficiency)     = 79.7
+        SBS1   (Aging / clock-like)                  = 52.0
+        SBS6   (DNA mismatch repair deficiency)     = 45.5
+        SBS87  (Thiopurine chemotherapy)             = 36.6
+        SBS54  (MMR-related / artifact)              = 25.8
+        SBS21  (DNA mismatch repair deficiency)     = 18.5
+        SBS10b (POLE exonuclease domain mutation)   = 16.9
+        SBS17b (Unknown, gastric cancer specific)    = 15.0
+        SBS20  (DNA mismatch repair deficiency)     = 14.8
+        SBS17a (Unknown, gastric cancer specific)    = 7.1
+
+    OUTPUT FILES:
+      output/cosmic_assignment/cosmic_activities.csv             (267 KB)
+      output/cosmic_assignment/cosmic_cosine_similarities.csv    (20 KB)
+      output/cosmic_assignment/top_signatures_per_sample.csv     (38 KB)
+      output/cosmic_assignment/cosmic_signature_landscape.png    (209 KB)
+      output/cosmic_assignment/cosine_similarity_distribution.png (124 KB)
+
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+          STEP 4: CLINICAL DATA DOWNLOAD & INTEGRATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+PURPOSE:
+    Download clinical data (gender, age, stage, survival) from GDC API and
+    molecular subtype labels (EBV/MSI/GS/CIN/POLE) from cBioPortal.
+    Calculate Tumor Mutational Burden (TMB) for each sample.
+
+SCRIPT: step4_get_clinical_data.py (447 lines)
+──────────────────────────────────────────────
+
+    Data sources and API calls used:
+
+    A) GDC API (clinical data for 443 cases):
+    ┌─────────────────────────────────────────────────────────────────────────┐
+    │ URL:    https://api.gdc.cancer.gov/cases                               │
+    │ Method: POST                                                            │
+    │ Body:   {                                                               │
+    │   "filters": {                                                          │
+    │     "op": "and",                                                        │
+    │     "content": [                                                        │
+    │       {"op":"=","content":{"field":"project.project_id",               │
+    │                            "value":"TCGA-STAD"}}                        │
+    │     ]                                                                   │
+    │   },                                                                    │
+    │   "fields": "submitter_id,demographic.gender,                          │
+    │     demographic.vital_status,demographic.days_to_death,                │
+    │     diagnoses.age_at_diagnosis,diagnoses.tumor_stage,                   │
+    │     diagnoses.days_to_last_follow_up",                                 │
+    │   "size": 500,                                                          │
+    │   "format": "json"                                                      │
+    │ }                                                                       │
+    └─────────────────────────────────────────────────────────────────────────┘
+
+    B) cBioPortal API (molecular subtypes for 383 patients):
+    ┌─────────────────────────────────────────────────────────────────────────┐
+    │ URL:    https://www.cbioportal.org/api/studies/                         │
+    │         stad_tcga_pan_can_atlas_2018/clinical-data                      │
+    │         ?clinicalDataType=PATIENT&projection=DETAILED                   │
+    │ Method: GET                                                             │
+    └─────────────────────────────────────────────────────────────────────────┘
+
+    C) TMB calculation from MAF files:
+       TMB = non-synonymous mutations / 30 Mb (exome size)
+       Non-synonymous = Missense, Nonsense, Frameshift, Splice_Site, etc.
+
+    Run Command:
+    ┌─────────────────────────────────────────────────────────────────────────┐
+    │ python step4_get_clinical_data.py                                       │
+    └─────────────────────────────────────────────────────────────────────────┘
+
+    Additional data merge was done manually after initial run:
+    ┌─────────────────────────────────────────────────────────────────────────┐
+    │ # The GDC API initially had URL encoding issues, so we used POST       │
+    │ # Clinical data from GDC saved to: data/gdc_clinical.csv               │
+    │ # Subtype data from cBioPortal saved to: data/cbio_clinical.csv        │
+    │ # These were merged with the existing clinical_data.csv                │
+    │ # to create the final version with official TCGA subtypes              │
+    └─────────────────────────────────────────────────────────────────────────┘
+
+    Output:
+    ┌─────────────────────────────────────────────────────────────────────────┐
+    │ 📊 Clinical Data Summary                                                │
+    │   Total samples: 431                                                    │
+    │   Unique patients: 431                                                  │
+    │   With subtypes: 375 (official TCGA labels)                             │
+    │                                                                         │
+    │   Molecular Subtype Distribution:                                       │
+    │     CIN:  219 (58.4%)                                                   │
+    │     MSI:   73 (19.5%)                                                   │
+    │     GS:    46 (12.3%)                                                   │
+    │     EBV:   30 (8.0%)                                                    │
+    │     POLE:   7 (1.9%)                                                    │
+    │                                                                         │
+    │   Gender: male=276, female=155                                          │
+    │   TMB: mean=10.6 mut/Mb, median=3.2 mut/Mb                             │
+    └─────────────────────────────────────────────────────────────────────────┘
+
+    OUTPUT FILE: data/clinical_data.csv
+
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                    STEP 5: FEATURE ENGINEERING
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+PURPOSE:
+    Build the ML-ready feature matrix by combining raw COSMIC signature
+    activities, normalized proportions, and biologically engineered features.
+
+SCRIPT: step5_feature_engineering.py (296 lines)
+────────────────────────────────────────────────
+
+    Feature categories:
+    ┌────────────────────────────────────────┬─────────────┬─────────────────┐
+    │ Category                               │ # Features  │ Description     │
+    ├────────────────────────────────────────┼─────────────┼─────────────────┤
+    │ Raw COSMIC signature activities        │ 83          │ Absolute counts │
+    │ Normalized signature proportions       │ 83          │ Relative (0-1)  │
+    │ Engineered features                    │ 13          │ See below       │
+    │ TOTAL                                  │ 179         │                 │
+    └────────────────────────────────────────┴─────────────┴─────────────────┘
+
+    13 Engineered features:
+    1.  MSI_sig_burden          — sum of SBS6+SBS14+SBS15+SBS20+SBS21+SBS26+SBS44
+    2.  MSI_sig_burden_prop     — same but from proportion columns
+    3.  APOBEC_burden           — sum of SBS2+SBS13
+    4.  APOBEC_burden_prop      — proportions
+    5.  clock_burden            — SBS1+SBS5
+    6.  HRD_burden              — SBS3 (homologous recombination deficiency)
+    7.  SBS17_burden            — SBS17a+SBS17b (gastric cancer specific)
+    8.  SBS1_SBS5_ratio         — SBS1 / (SBS5 + epsilon)
+    9.  dominant_sig_prop       — max proportion across all signatures
+    10. n_active_sigs           — count of signatures with proportion > 5%
+    11. log_total_activity      — log(1 + total mutation activity)
+    12. TMB                     — mutations per megabase
+    13. log_TMB                 — log(1 + TMB)
+
+    Run Command:
+    ┌─────────────────────────────────────────────────────────────────────────┐
+    │ python step5_feature_engineering.py                                     │
+    └─────────────────────────────────────────────────────────────────────────┘
+
+    Output:
+    ┌─────────────────────────────────────────────────────────────────────────┐
+    │ 📊 Feature Matrix Summary                                               │
+    │   Samples:  431 (375 with labels)                                       │
+    │   Features: 179                                                         │
+    │                                                                         │
+    │   Label Distribution:                                                   │
+    │     CIN: 219, MSI: 73, GS: 46, EBV: 30, POLE: 7                       │
+    │                                                                         │
+    │ 💾 Saved: output/ml_features.csv                                        │
+    │ 💾 Saved: output/ml_labels.csv                                          │
+    └─────────────────────────────────────────────────────────────────────────┘
+
+    OUTPUT FILES:
+      output/ml_features.csv (541 KB) — 375 samples × 179 features
+      output/ml_labels.csv   (12 KB)  — 375 samples × 1 label column
+
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                 STEP 6: AI/ML CLASSIFICATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+PURPOSE:
+    Train 5 machine learning classifiers to predict molecular subtypes
+    from signature features. Evaluate with 5-fold stratified CV.
+
+SCRIPT: step6_ml_classification.py (436 lines)
+──────────────────────────────────────────────
+
+    Pipeline for each model:
+    1. StandardScaler normalization
+    2. GridSearchCV hyperparameter tuning (inner 3-fold CV)
+    3. 5-fold stratified cross-validation (outer evaluation)
+    4. Metrics: Accuracy, F1, Precision, Recall, MCC, AUC-ROC
+
+    Models & hyperparameter grids:
+    ┌───────────────────┬────────────────────────────────────────────────────┐
+    │ Model             │ Hyperparameters searched                          │
+    ├───────────────────┼────────────────────────────────────────────────────┤
+    │ Random Forest     │ n_estimators={200,500}, max_depth={5,10,None},    │
+    │                   │ min_samples_split={2,5}, class_weight=balanced    │
+    ├───────────────────┼────────────────────────────────────────────────────┤
+    │ XGBoost           │ n_estimators={200,500}, max_depth={4,6,8},        │
+    │                   │ learning_rate={0.05,0.1}, subsample=0.8           │
+    ├───────────────────┼────────────────────────────────────────────────────┤
+    │ SVM (RBF)         │ C={1,10,100}, gamma={scale,auto},                 │
+    │                   │ class_weight=balanced                              │
+    ├───────────────────┼────────────────────────────────────────────────────┤
+    │ MLP               │ hidden_layers={(128,64),(256,128,64),(128,64,32)},│
+    │                   │ alpha={0.0001,0.001}, early_stopping=True          │
+    ├───────────────────┼────────────────────────────────────────────────────┤
+    │ Gradient Boosting │ n_estimators={200,300}, max_depth={3,5},          │
+    │                   │ learning_rate={0.05,0.1}, subsample=0.8           │
+    └───────────────────┴────────────────────────────────────────────────────┘
+
+    Run Command:
+    ┌─────────────────────────────────────────────────────────────────────────┐
+    │ python step6_ml_classification.py                                       │
+    └─────────────────────────────────────────────────────────────────────────┘
+
+    Results:
+    ┌───────────────────┬──────────┬─────────┬───────┬─────────┐
+    │ Model             │ Accuracy │ F1      │ MCC   │ AUC-ROC │
+    ├───────────────────┼──────────┼─────────┼───────┼─────────┤
+    │ XGBoost  🏆       │ 0.811    │ 0.765   │ 0.670 │ 0.870   │
+    │ Random Forest     │ 0.803    │ 0.744   │ 0.660 │ 0.873   │
+    │ Gradient Boosting │ 0.800    │ 0.761   │ 0.648 │ 0.844   │
+    │ MLP               │ 0.744    │ 0.666   │ 0.539 │ 0.717   │
+    │ SVM (RBF)         │ 0.720    │ 0.673   │ 0.492 │ 0.812   │
+    └───────────────────┴──────────┴─────────┴───────┴─────────┘
+
+    Best XGBoost per-class performance:
+    ┌─────────┬───────────┬────────┬─────────┬────────────────────┐
+    │ Subtype │ Precision │ Recall │ F1      │ Correctly Classified│
+    ├─────────┼───────────┼────────┼─────────┼────────────────────┤
+    │ MSI     │ 0.99      │ 1.00   │ 0.99    │ 73/73 (100%)       │
+    │ CIN     │ 0.78      │ 0.97   │ 0.87    │ 213/219 (97.3%)    │
+    │ GS      │ 0.68      │ 0.33   │ 0.44    │ 15/46 (32.6%)      │
+    │ POLE    │ 0.67      │ 0.29   │ 0.40    │ 2/7 (28.6%)        │
+    │ EBV     │ 0.33      │ 0.03   │ 0.06    │ 1/30 (3.3%)        │
+    └─────────┴───────────┴────────┴─────────┴────────────────────┘
+
+    Best XGBoost parameters:
+    - learning_rate: 0.1
+    - max_depth: 4
+    - n_estimators: 200
+    - subsample: 0.8
+
+    OUTPUT FILES:
+      output/ml_results/model_comparison.csv        (0.3 KB)
+      output/ml_results/predictions.csv             (15 KB)
+      output/ml_results/feature_importance.csv      (3.3 KB)
+      output/ml_results/best_model.pkl              (935 KB)
+      output/ml_results/best_confusion_matrix.png   (118 KB)
+      output/ml_results/confusion_matrices_all.png  (381 KB)
+      output/ml_results/roc_curves.png              (175 KB)
+      output/ml_results/model_comparison_chart.png  (172 KB)
+      output/ml_results/feature_importance.png      (179 KB)
+
+    Top 10 most important features (XGBoost):
+      1.  SBS54               (0.050)
+      2.  SBS15               (0.046) — DNA mismatch repair deficiency
+      3.  TMB                 (0.040) — Tumor Mutational Burden
+      4.  MSI_sig_burden_prop (0.025) — Engineered MSI feature
+      5.  SBS23               (0.024)
+      6.  SBS25               (0.019)
+      7.  SBS84               (0.019)
+      8.  log_total_activity  (0.018)
+      9.  SBS89_prop          (0.017)
+      10. SBS32_prop          (0.013)
+
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+               STEP 7: VISUALIZATION & INTERPRETATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+PURPOSE:
+    Generate publication-ready figures: SHAP explainability, t-SNE/UMAP,
+    signature-subtype heatmap, Kaplan-Meier survival curves, TMB distribution.
+
+SCRIPT: step7_visualize.py (387 lines)
+──────────────────────────────────────
+
+    Run Command:
+    ┌─────────────────────────────────────────────────────────────────────────┐
+    │ python step7_visualize.py                                               │
+    └─────────────────────────────────────────────────────────────────────────┘
+
+    Output:
+    ┌─────────────────────────────────────────────────────────────────────────┐
+    │ 🔍 Generating SHAP Explainability Plots...                             │
+    │   📊 Saved: shap_summary.png                                           │
+    │   📊 Saved: shap_bar.png                                               │
+    │                                                                         │
+    │ 🗺️ Generating Dimensionality Reduction Plots...                       │
+    │   Computing t-SNE...                                                    │
+    │   Computing UMAP...                                                     │
+    │   📊 Saved: tsne_umap.png                                              │
+    │                                                                         │
+    │ 🔥 Generating Signature-Subtype Heatmap...                             │
+    │   📊 Saved: signature_subtype_heatmap.png                              │
+    │                                                                         │
+    │ 📈 Generating Survival Analysis...                                     │
+    │   📊 Saved: survival_curves.png                                        │
+    │                                                                         │
+    │ 📊 Generating TMB Distribution Plot...                                 │
+    │   📊 Saved: tmb_distribution.png                                       │
+    │ ✅ Step 7 complete!                                                     │
+    └─────────────────────────────────────────────────────────────────────────┘
+
+    OUTPUT FILES (all in output/figures/):
+      shap_summary.png              (445 KB) — SHAP beeswarm plot
+      shap_bar.png                  (242 KB) — SHAP mean |value| bar plot
+      tsne_umap.png                 (657 KB) — t-SNE and UMAP side by side
+      signature_subtype_heatmap.png (441 KB) — Mean sig contribution by subtype
+      survival_curves.png           (185 KB) — Kaplan-Meier OS curves
+      tmb_distribution.png          (172 KB) — TMB box plots by subtype
+
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                STEP 8: GENERATE HTML REPORT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+PURPOSE:
+    Generate a professional dark-themed HTML report with all figures
+    embedded as base64 images.
+
+SCRIPT: step8_generate_report.py (375 lines)
+────────────────────────────────────────────
+
+    Run Command:
+    ┌─────────────────────────────────────────────────────────────────────────┐
+    │ python step8_generate_report.py                                         │
+    └─────────────────────────────────────────────────────────────────────────┘
+
+    Output:
+    ┌─────────────────────────────────────────────────────────────────────────┐
+    │ 💾 Report saved: output/report.html                                     │
+    │    Open in browser: file:///home/param/Downloads/Project/output/        │
+    │    report.html                                                          │
+    │ ✅ Step 8 complete!                                                     │
+    └─────────────────────────────────────────────────────────────────────────┘
+
+    OUTPUT FILE: output/report.html (5.4 MB)
+    
+    Open in browser:
+    ┌─────────────────────────────────────────────────────────────────────────┐
+    │ xdg-open output/report.html                                             │
+    └─────────────────────────────────────────────────────────────────────────┘
+
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+              BONUS: GENERATE RESEARCH PAPER (DOCX)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+SCRIPT: generate_paper.py (835 lines)
+─────────────────────────────────────
+
+    Run Command:
+    ┌─────────────────────────────────────────────────────────────────────────┐
+    │ python generate_paper.py                                                │
+    └─────────────────────────────────────────────────────────────────────────┘
+
+    Output:
+    ┌─────────────────────────────────────────────────────────────────────────┐
+    │ ✅ Research paper saved: output/Research_Paper_Gastric_Cancer_          │
+    │    Mutational_Signatures.docx                                           │
+    │    File size: 3.4 MB                                                    │
+    │    ~4,300 words, ~30 pages, 16 figures, 5 tables                       │
+    └─────────────────────────────────────────────────────────────────────────┘
+
+    OUTPUT FILE: output/Research_Paper_Gastric_Cancer_Mutational_Signatures.docx
+
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+              MASTER PIPELINE RUNNER (run_pipeline.sh)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    Usage:
+    ┌─────────────────────────────────────────────────────────────────────────┐
+    │ # Run entire pipeline (all 8 steps):                                    │
+    │ bash run_pipeline.sh                                                    │
+    │                                                                         │
+    │ # Run only a specific step:                                             │
+    │ bash run_pipeline.sh 1       # Only Step 1                              │
+    │ bash run_pipeline.sh 6       # Only Step 6 (ML)                         │
+    │                                                                         │
+    │ # Run a range of steps:                                                 │
+    │ bash run_pipeline.sh 3-6     # Steps 3 through 6                        │
+    │ bash run_pipeline.sh 7-8     # Steps 7 and 8 only                       │
+    └─────────────────────────────────────────────────────────────────────────┘
+
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                    COMPLETE FILE INVENTORY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+SCRIPTS (10 files):
+    step1_build_sbs96_matrix.py     227 lines   7.6 KB
+    step2_extract_signatures.py     377 lines   13.8 KB
+    step3_cosmic_assignment.py      319 lines   12.4 KB
+    step4_get_clinical_data.py      447 lines   16.0 KB
+    step5_feature_engineering.py    296 lines   12.0 KB
+    step6_ml_classification.py      436 lines   16.0 KB
+    step7_visualize.py              387 lines   14.2 KB
+    step8_generate_report.py        375 lines   13.2 KB
+    run_pipeline.sh                 127 lines    4.6 KB
+    generate_paper.py               835 lines   47.5 KB
+
+DATA FILES:
+    output/sbs96_matrix.csv                     96.7 KB
+    output/ml_features.csv                     540.5 KB
+    output/ml_labels.csv                        12.1 KB
+    output/cosmic_assignment/cosmic_activities.csv    267.2 KB
+    output/cosmic_assignment/cosmic_cosine_similarities.csv   20.2 KB
+    output/cosmic_assignment/top_signatures_per_sample.csv    37.5 KB
+    output/signatures/signature_profiles.csv     15.2 KB
+    output/signatures/signature_activities.csv   69.9 KB
+    output/signatures/rank_selection_metrics.csv   0.7 KB
+    output/ml_results/model_comparison.csv        0.3 KB
+    output/ml_results/feature_importance.csv      3.3 KB
+    output/ml_results/predictions.csv            15.4 KB
+    output/ml_results/best_model.pkl            935.1 KB
+    data/clinical_data.csv
+    data/gdc_clinical.csv
+    data/cbio_clinical.csv
+
+FIGURES (16 PNG files):
+    output/signatures/rank_selection.png               221 KB
+    output/signatures/signature_profiles_96ch.png      527 KB
+    output/signatures/signature_activities_heatmap.png 147 KB
+    output/cosmic_assignment/cosmic_signature_landscape.png    209 KB
+    output/cosmic_assignment/cosine_similarity_distribution.png 124 KB
+    output/ml_results/best_confusion_matrix.png        118 KB
+    output/ml_results/confusion_matrices_all.png       381 KB
+    output/ml_results/roc_curves.png                   175 KB
+    output/ml_results/model_comparison_chart.png       172 KB
+    output/ml_results/feature_importance.png           179 KB
+    output/figures/shap_summary.png                    445 KB
+    output/figures/shap_bar.png                        242 KB
+    output/figures/tsne_umap.png                       657 KB
+    output/figures/signature_subtype_heatmap.png       441 KB
+    output/figures/survival_curves.png                 185 KB
+    output/figures/tmb_distribution.png                172 KB
+
+REPORTS:
+    output/report.html                                            5,362 KB
+    output/Research_Paper_Gastric_Cancer_Mutational_Signatures.docx 3,458 KB
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                    QUICK REFERENCE: ALL COMMANDS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    # Activate environment
+    source /home/param/miniconda3/etc/profile.d/conda.sh
+    conda activate base
+
+    # Run full pipeline
+    cd /home/param/Downloads/Project
+    bash run_pipeline.sh
+
+    # Or run individual steps
+    python step1_build_sbs96_matrix.py
+    python step2_extract_signatures.py
+    python step3_cosmic_assignment.py
+    python step4_get_clinical_data.py
+    python step5_feature_engineering.py
+    python step6_ml_classification.py
+    python step7_visualize.py
+    python step8_generate_report.py
+
+    # Generate research paper
+    python generate_paper.py
+
+    # Open report in browser
+    xdg-open output/report.html
+
+    # Open research paper
+    xdg-open output/Research_Paper_Gastric_Cancer_Mutational_Signatures.docx
+
+================================================================================
+                           END OF DOCUMENTATION
+================================================================================
