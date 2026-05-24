@@ -231,17 +231,6 @@ Three strategies combined:
 
 ---
 
-## 📚 References
-
-- TCGA-STAD — *Nature* 2014 ([doi:10.1038/nature13480](https://doi.org/10.1038/nature13480))
-- COSMIC v3.4 — Tate et al., *NAR* 2019 ([doi:10.1093/nar/gky1015](https://doi.org/10.1093/nar/gky1015))
-- NMF — Alexandrov et al., *Nature* 2013 ([doi:10.1038/nature12477](https://doi.org/10.1038/nature12477))
-- XGBoost — Chen & Guestrin, *KDD* 2016
-- SHAP — Lundberg & Lee, *NeurIPS* 2017
-- SMOTE — Chawla et al., *JAIR* 2002
-
----
-
 ## 📄 License
 
 MIT License — see [LICENSE](LICENSE)
